@@ -49,8 +49,6 @@ class TGInformer:
         db_port = os.environ['MYSQL_PORT'],
         tg_account_id = os.environ['TELEGRAM_ACCOUNT_ID'],
         tg_notifications_channel_id = os.environ['TELEGRAM_NOTIFICATIONS_CHANNEL_ID'],
-        google_credentials_path = os.environ['GOOGLE_APPLICATION_CREDENTIALS'],
-        google_sheet_name = os.environ['GOOGLE_SHEET_NAME'],
         tg_phone_number = os.environ['TELEGRAM_ACCOUNT_PHONE_NUMBER']
     ):
 
@@ -90,29 +88,6 @@ class TGInformer:
 
         if not tg_account_id:
             raise Exception('Must specify "tg_account_id" in informer.env file for bot instance')
-
-        # -----------------------
-        # Initialize Google Sheet
-        # -----------------------
-
-        logging.info(f'Attempting to access Google Sheet {google_sheet_name}.sheet1 ...\n')
-
-        # Lets check if the file exists
-
-        try:
-            if os.path.isfile(google_credentials_path):  
-
-                scope = [
-                    'https://www.googleapis.com/auth/spreadsheets',
-                    'https://www.googleapis.com/auth/drive']
-                creds = ServiceAccountCredentials.from_json_keyfile_name(google_credentials_path, scope)
-
-                self.gsheet = gspread.authorize(creds)
-                self.sheet = self.gsheet.open(google_sheet_name).sheet1
-            else:
-                self.gsheet = False
-        except gspread.exceptions.APIError:
-            self.gsheet = False
 
         # -------------------
         # Initialize database
@@ -527,30 +502,6 @@ class TGInformer:
         # Send the message
         # ----------------
         await self.client.send_message(self.monitor_channel, message)
-
-        # -------------------------
-        # Write to the Google Sheet
-        # -------------------------
-        if self.gsheet is True:
-            self.sheet.append_row([
-                sender_id,
-                sender_username,
-                channel_id,
-                self.channel_meta[channel_id]['channel_title'],
-                self.channel_meta[channel_id]['channel_url'],
-                keyword,
-                message_text,
-                is_mention,
-                is_scheduled,
-                is_fwd,
-                is_reply,
-                is_bot,
-                is_channel,
-                is_group,
-                is_private,
-                channel_size,
-                timestamp
-            ])
 
         # --------------
         # Add user to DB
