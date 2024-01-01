@@ -14,7 +14,7 @@ logging.getLogger().setLevel(logging.INFO)
 # -----------------
 # Load the ENV file
 # -----------------
-dotenv_path = Path('informer.env')
+dotenv_path = Path('../config/myconfig.env')
 load_dotenv(dotenv_path=dotenv_path)
 
 Session = None
@@ -55,7 +55,7 @@ def init_data():
 def init_add_account():
 
     global session, SERVER_MODE, engine
-
+    logging.info('-------------------------------------------')    
     logging.info(f'{sys._getframe().f_code.co_name}: Adding bot account')
 
     BOT_ACCOUNTS = [
@@ -77,9 +77,12 @@ def init_add_account():
             account_tmodified=datetime.now()),
 
     ]
-
+    
     for account in BOT_ACCOUNTS:
-        session.add(account)
+        if session.query(Account).filter(Account.account_id==account.account_id).count().real==0:
+            session.add(account)
+        else:
+            logging.info(f'{sys._getframe().f_code.co_name}: Skipping bot account already exists')
 
     session.commit()
 
@@ -89,15 +92,16 @@ def init_add_channels():
     # Lets get the first account
     account = session.query(Account).first()
 
-    CHANNELS = [
-        {
-            'channel_name': 'Informer monitoring',
-            'channel_id': os.environ['TELEGRAM_NOTIFICATIONS_CHANNEL_ID'],  # Enter your own Telegram channel ID for monitoring here
-            'channel_url': os.environ['TELEGRAM_NOTIFICATIONS_CHANNEL_URL'],
-            'channel_is_private': False if os.environ['TELEGRAM_NOTIFICATIONS_CHANNEL_IS_PRIVATE']=='0' else True
-        },
+    # CHANNELS = [
+    #     {
+    #         'channel_name': 'Informer monitoring',
+    #         'channel_id': os.environ['TELEGRAM_NOTIFICATIONS_CHANNEL_ID'] if len(os.environ['TELEGRAM_NOTIFICATIONS_CHANNEL_ID'].strip()) else None,  # Enter your own Telegram channel ID for monitoring here
+    #         'channel_url': os.environ['TELEGRAM_NOTIFICATIONS_CHANNEL_URL'] if len(os.environ['TELEGRAM_NOTIFICATIONS_CHANNEL_URL'].strip()) else None,
+    #         'channel_is_private': False if os.environ['TELEGRAM_NOTIFICATIONS_CHANNEL_IS_PRIVATE']=='0' else True
+    #     },
 
-    ]
+    # ]
+    CHANNELS = []
 
     # Lets import the CSV with the channel list
     with open(os.environ['TELEGRAM_CHANNEL_MONITOR_LIST']) as csv_file:
@@ -105,33 +109,39 @@ def init_add_channels():
         line_count = 0
         for row in csv_reader:
             if line_count != 0:
-                print(f'Adding channel {row[0]} => {row[1]}')
                 CHANNELS.append({
                     'channel_name': row[0],
                      'channel_url': row[1]
                                  })
             line_count += 1
 
-    
-    logging.info(f'Inserting {line_count} channels to database')
+    logging.info('-------------------------------------------')    
+    logging.info(f'Inserting {len(CHANNELS)} channels to database')
 
     for channel in CHANNELS:
         logging.info(f"{sys._getframe().f_code.co_name}: Adding channel {channel['channel_name']} to database")
-
+        channel_name=channel['channel_name'] if 'channel_name' in channel else None
         channel_url = channel['channel_url'] if 'channel_url' in channel else None
         channel_id = channel['channel_id'] if 'channel_id' in channel else None
         channel_is_group = channel['channel_is_group'] if 'channel_is_group' in channel else False
         channel_is_private = channel['channel_is_private'] if 'channel_is_private' in channel else False
+        
+        if session.query(Channel).filter(Channel.channel_url==channel_url).count().real==0:
+            session.add(Channel(
+                channel_name=channel_name,
+                channel_url=channel_url,
+                channel_id=channel_id,
+                account_id=account.account_id,
+                channel_tcreate=datetime.now(),
+                channel_is_group=channel_is_group,
+                channel_is_private=channel_is_private
+            ))
+        else:
+            logging.info(f"{sys._getframe().f_code.co_name}: Skipping channel {channel['channel_name']} already exists")
+        
+        
+        
 
-        session.add(Channel(
-            channel_name=channel['channel_name'],
-            channel_url=channel_url,
-            channel_id=channel_id,
-            account_id=account.account_id,
-            channel_tcreate=datetime.now(),
-            channel_is_group=channel_is_group,
-            channel_is_private=channel_is_private
-        ))
     session.commit()
 
 # ==============================
@@ -170,16 +180,20 @@ def init_add_keywords():
         },
 
     ]
-
+    logging.info('-------------------------------------------')    
     for keyword in KEYWORDS:
         logging.info(f"{sys._getframe().f_code.co_name}: Adding keyword {keyword['keyword_description']} to the database")
 
-        session.add(Keyword(
-            keyword_description=keyword['keyword_description'],
-            keyword_regex=keyword['keyword_regex'],
-            keyword_tmodified=datetime.now(),
-            keyword_tcreate=datetime.now()
-        ))
+        if session.query(Keyword).filter(Keyword.keyword_regex==keyword['keyword_regex']).count().real==0:
+            session.add(Keyword(
+                keyword_description=keyword['keyword_description'],
+                keyword_regex=keyword['keyword_regex'],
+                keyword_tmodified=datetime.now(),
+                keyword_tcreate=datetime.now()
+            ))
+        else:
+            logging.info(f"{sys._getframe().f_code.co_name}: Skipping keyword {keyword['keyword_description']} regex already exists")
+
     session.commit()
 
 
@@ -223,7 +237,7 @@ def initialize_db():
     SERVER_MODE = os.environ['ENV']
     MYSQL_CONNECTOR_STRING = f'mysql+mysqlconnector://{db_user}:{db_password}@{db_ip_address}:{db_port}/{db_database}?charset=utf8mb4&collation=utf8mb4_general_ci'
 
-    engine = db.create_engine(MYSQL_CONNECTOR_STRING, echo=True)
+    engine = db.create_engine(MYSQL_CONNECTOR_STRING, echo=False)
     Session = sessionmaker(bind=engine)
     session = None
     session = Session()
